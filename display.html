@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { margin: 0; background: #000; color: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    
+    .container { width: 90%; text-align: center; transition: all 0.3s ease; }
+    .container.fullscreen { font-size: 3rem; background: transparent; }
+    .container.lowerthird { position: absolute; bottom: 40px; width: 95%; background: rgba(0,0,0,0.85); border-left: 8px solid #4285f4; padding: 20px; border-radius: 8px; text-align: left; font-size: 1.8rem; }
+    
+    .ref { color: #f4b400; font-weight: bold; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+  <div id="display-container" class="container fullscreen">
+    <div id="live-ref" class="ref">ZISUS BIBLE DISPLAY</div>
+    <div id="live-text">Waiting for live signal...</div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    ipcRenderer.on('render-live-feed', (event, data) => {
+      document.getElementById('live-ref').innerText = data.ref;
+      document.getElementById('live-text').innerText = data.text;
+    });
+
+    ipcRenderer.on('apply-layout-mode', (event, mode) => {
+      const container = document.getElementById('display-container');
+      container.className = `container ${mode}`;
+    });
+  </script>
+</body>
+</html>

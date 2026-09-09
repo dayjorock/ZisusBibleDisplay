@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #fff; padding: 20px; margin: 0; }
+    .panel { background: #2a2a2a; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #3a3a3a; }
+    h3 { margin-top: 0; color: #aaa; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; }
+    
+    .btn { display: block; width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; font-size: 1rem; cursor: pointer; margin-bottom: 10px; transition: 0.2s; }
+    .btn-mic { background: #4285f4; color: white; }
+    .btn-mic.listening { background: #ea4335; box-shadow: 0 0 15px #ea4335; }
+    .btn-live { background: #34a853; color: white; font-size: 1.2rem; border-bottom: 4px solid #24753a; }
+    
+    .layout-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn-mode { background: #444; color: #ccc; border: 2px solid transparent; }
+    .btn-mode.active { border-color: #4285f4; color: white; background: #2b3e5a; }
+
+    .monitor-box { background: #111; padding: 12px; border-radius: 6px; font-size: 0.95rem; min-height: 40px; border-left: 4px solid #555; margin-top: 5px; }
+    #preview-monitor { border-left-color: #f4b400; color: #f4b400; }
+  </style>
+</head>
+<body>
+
+  <div class="panel">
+    <h3>Voice Input Command Deck</h3>
+    <button id="micBtn" class="btn btn-mic" onclick="handleVoiceEngine()">🎤 START MIC LISTEN</button>
+  </div>
+
+  <div class="panel">
+    <h3>Layout Profile Switching</h3>
+    <div class="layout-row">
+      <button id="btn-fs" class="btn btn-mode active" onclick="changeLayout('fullscreen')">🖥️ FULL SCREEN</button>
+      <button id="btn-lt" class="btn btn-mode" onclick="changeLayout('lowerthird')">📛 LOWER THIRD</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Production Preview Staging</h3>
+    <div id="preview-monitor" class="monitor-box"><b>John 3:16</b><br>For God so loved the world that he gave his only begotten Son...</div>
+    <br>
+    <button class="btn btn-live" onclick="triggerGoLive()">🚀 GO LIVE</button>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    let stagedData = { ref: "John 3:16", text: "For God so loved the world that he gave his only begotten Son..." };
+
+    function triggerGoLive() {
+      ipcRenderer.send('update-live-feed', stagedData);
+    }
+
+    function changeLayout(mode) {
+      document.getElementById('btn-fs').classList.toggle('active', mode === 'fullscreen');
+      document.getElementById('btn-lt').classList.toggle('active', mode === 'lowerthird');
+      ipcRenderer.send('update-layout-mode', mode);
+    }
+
+    // Direct Speech API running natively inside Electron (No iframe sandboxing)
+    let recognition;
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechClass();
+      recognition.continuous = true;
+
+      recognition.onstart = () => {
+        const b = document.getElementById('micBtn');
+        b.innerText = "🛑 LISTENING LIVE...";
+        b.classList.add('listening');
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[event.results.length - 1][0].transcript;
+        document.getElementById('preview-monitor').innerHTML = `<b>Voice Command:</b><br>${transcript}`;
+        stagedData = { ref: "Voice Match", text: transcript };
+      };
+
+      recognition.onend = () => {
+        const b = document.getElementById('micBtn');
+        b.innerText = "🎤 START MIC LISTEN";
+        b.classList.remove('listening');
+      };
+    }
+
+    function handleVoiceEngine() {
+      if (recognition) {
+        try { recognition.start(); } catch(e) { recognition.stop(); }
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 {
   "name": "zisus-bible-display",
-  "version": "1.0.0",
-  "description": "Zisus Bible Display Dual-Screen Media Suite",
+  "version": "2.0.0",
+  "description": "Standalone Desktop Bible Projection Suite",
   "main": "main.js",
   "scripts": {
     "start": "electron .",

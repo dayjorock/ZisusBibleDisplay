@@ -1,17 +1,15 @@
-const { app, BrowserWindow, screen, systemPreferences } = require('electron');
-
-process.env.GOOGLE_API_KEY = 'LOmUkEHZbq-98XMzdHqx9';
+const { app, BrowserWindow, screen, ipcMain, systemPreferences } = require('electron');
+const path = require('path');
 
 let controllerWindow;
 let displayWindow;
-
-const GOOGLE_WEB_APP_BASE_URL = 'https://script.google.com/macros/s/AKfycbyDdykO1vcXWIBGajQoPzgk0_60XB8ThEYa6JJaOoI-p2BEKNfDnS4buWXYTS1Dnzxf/exec';
 
 function launchSoftwareStudio() {
   const displays = screen.getAllDisplays();
   let mainDisplay = screen.getPrimaryDisplay();
   let projectorDisplay = displays.find(d => d.bounds.x !== 0 || d.bounds.y !== 0) || mainDisplay;
 
+  // 1. Controller Deck Window
   controllerWindow = new BrowserWindow({
     width: 1100,
     height: 750,
@@ -20,25 +18,14 @@ function launchSoftwareStudio() {
     title: "Zisus Bible Display - Controller Deck",
     backgroundColor: '#1a1a1a',
     webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: false,
-      backgroundThrottling: false,
-      webSecurity: false,
-      allowRunningInsecureContent: true
+      nodeIntegration: true,
+      contextIsolation: false
     }
   });
 
-  // Explicitly grant media permissions across all nested frames & origins
-  controllerWindow.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
-    return true;
-  });
+  controllerWindow.loadFile(path.join(__dirname, 'index.html'));
 
-  controllerWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    return callback(true);
-  });
-
-  controllerWindow.loadURL(`https://script.google.com/macros/s/AKfycbyDdykO1vcXWIBGajQoPzgk0_60XB8ThEYa6JJaOoI-p2BEKNfDnS4buWXYTS1Dnzxf/exec?view=controller`);
-
+  // 2. Projector Display Window
   displayWindow = new BrowserWindow({
     x: projectorDisplay.bounds.x,
     y: projectorDisplay.bounds.y,
@@ -50,21 +37,32 @@ function launchSoftwareStudio() {
     title: "Zisus Bible Display - Live Broadcast Canvas",
     backgroundColor: '#000000',
     webPreferences: {
-      backgroundThrottling: false,
-      webSecurity: false
+      nodeIntegration: true,
+      contextIsolation: false
     }
   });
 
-  displayWindow.loadURL(`https://script.google.com/macros/s/AKfycbyDdykO1vcXWIBGajQoPzgk0_60XB8ThEYa6JJaOoI-p2BEKNfDnS4buWXYTS1Dnzxf/exec?view=display`);
+  displayWindow.loadFile(path.join(__dirname, 'display.html'));
 
   controllerWindow.on('closed', () => { if (process.platform !== 'darwin') app.quit(); });
   displayWindow.on('closed', () => { displayWindow = null; });
 }
 
-// Bypasses browser UI permissions prompts completely
+// System Hardware Permission Overrides
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
-app.commandLine.appendSwitch('enable-speech-dispatcher');
-app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', GOOGLE_WEB_APP_BASE_URL);
+
+// Local IPC Bridge (Controller <-> Display sync)
+ipcMain.on('update-live-feed', (event, data) => {
+  if (displayWindow) {
+    displayWindow.webContents.send('render-live-feed', data);
+  }
+});
+
+ipcMain.on('update-layout-mode', (event, mode) => {
+  if (displayWindow) {
+    displayWindow.webContents.send('apply-layout-mode', mode);
+  }
+});
 
 app.whenReady().then(async () => {
   if (process.platform === 'win32' || process.platform === 'darwin') {

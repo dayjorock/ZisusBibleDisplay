@@ -1,6 +1,5 @@
 const { app, BrowserWindow, screen, systemPreferences } = require('electron');
 
-// 1. Force Google Cloud Speech API access inside Electron container
 process.env.GOOGLE_API_KEY = 'LOmUkEHZbq-98XMzdHqx9';
 
 let controllerWindow;
@@ -22,20 +21,20 @@ function launchSoftwareStudio() {
     backgroundColor: '#1a1a1a',
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true,
-      backgroundThrottling: false
+      contextIsolation: false,
+      backgroundThrottling: false,
+      webSecurity: false,
+      allowRunningInsecureContent: true
     }
   });
 
-  // Handle media permissions dynamically
-  controllerWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
-    if (permission === 'media' || permission === 'audioCapture') return true;
-    return false;
+  // Explicitly grant media permissions across all nested frames & origins
+  controllerWindow.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    return true;
   });
 
   controllerWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (permission === 'media' || permission === 'audioCapture') return callback(true);
-    return callback(false);
+    return callback(true);
   });
 
   controllerWindow.loadURL(`https://script.google.com/macros/s/AKfycbyDdykO1vcXWIBGajQoPzgk0_60XB8ThEYa6JJaOoI-p2BEKNfDnS4buWXYTS1Dnzxf/exec?view=controller`);
@@ -51,7 +50,8 @@ function launchSoftwareStudio() {
     title: "Zisus Bible Display - Live Broadcast Canvas",
     backgroundColor: '#000000',
     webPreferences: {
-      backgroundThrottling: false
+      backgroundThrottling: false,
+      webSecurity: false
     }
   });
 
@@ -61,18 +61,16 @@ function launchSoftwareStudio() {
   displayWindow.on('closed', () => { displayWindow = null; });
 }
 
-// Bypasses Chrome UI permission prompts and allows media streams
+// Bypasses browser UI permissions prompts completely
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 app.commandLine.appendSwitch('enable-speech-dispatcher');
+app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', GOOGLE_WEB_APP_BASE_URL);
 
 app.whenReady().then(async () => {
-  // Ask Windows OS explicitly for microphone permissions
   if (process.platform === 'win32' || process.platform === 'darwin') {
     try {
       await systemPreferences.askForMediaAccess('microphone');
-    } catch (e) {
-      console.log('Microphone access handled by system defaults');
-    }
+    } catch (e) {}
   }
   setTimeout(launchSoftwareStudio, 1000);
 });

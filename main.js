@@ -31,6 +31,14 @@ function launchSoftwareStudio() {
   controllerWindow.on('closed', () => { if (process.platform !== 'darwin') app.quit(); });
 }
 
+// Add inside main.js inside launchSoftwareStudio()
+controllerWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+  if (permission === 'media') {
+    return callback(true); // Auto-approve microphone requests
+  }
+  callback(false);
+});
+
 function createDisplayWindow(targetDisplay) {
   if (displayWindow && !displayWindow.isDestroyed()) {
     displayWindow.focus();

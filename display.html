@@ -2,10 +2,24 @@
 <html>
 <head>
   <style>
-    body { margin: 0; background: #000; color: #fff; font-family: Arial, sans-serif; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    body { 
+      margin: 0; 
+      background: #000; 
+      color: #fff; 
+      font-family: Arial, sans-serif; 
+      height: 100vh; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      overflow: hidden; 
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      transition: background-image 0.4s ease-in-out;
+    }
     
     .container { width: 90%; text-align: center; transition: all 0.3s ease; }
-    .container.fullscreen { font-size: 3rem; background: transparent; }
+    .container.fullscreen { font-size: 3rem; background: rgba(0, 0, 0, 0.4); padding: 30px; border-radius: 12px; }
     .container.lowerthird { position: absolute; bottom: 40px; width: 95%; background: rgba(0,0,0,0.85); border-left: 8px solid #4285f4; padding: 20px; border-radius: 8px; text-align: left; font-size: 1.8rem; }
     
     .ref { color: #f4b400; font-weight: bold; margin-bottom: 10px; }
@@ -19,17 +33,49 @@
   </div>
 
   <script>
-    const { ipcRenderer } = require('electron');
+    // Electron IPC Renderer Integration
+    let ipcRenderer;
+    try {
+      ipcRenderer = require('electron').ipcRenderer;
+    } catch (e) {
+      console.log("Electron IPC not available, running in browser mode.");
+    }
 
-    ipcRenderer.on('render-live-feed', (event, data) => {
-      document.getElementById('live-ref').innerText = data.ref;
-      document.getElementById('live-text').innerText = data.text;
-    });
+    if (ipcRenderer) {
+      ipcRenderer.on('render-live-feed', (event, data) => {
+        document.getElementById('live-ref').innerText = data.ref;
+        document.getElementById('live-text').innerText = data.text;
+      });
 
-    ipcRenderer.on('apply-layout-mode', (event, mode) => {
-      const container = document.getElementById('display-container');
-      container.className = `container ${mode}`;
-    });
+      ipcRenderer.on('apply-layout-mode', (event, mode) => {
+        const container = document.getElementById('display-container');
+        container.className = `container ${mode}`;
+      });
+
+      ipcRenderer.on('set-background-image', (event, imageUrl) => {
+        document.body.style.backgroundImage = `url("${imageUrl}")`;
+      });
+    }
+
+    // BroadcastChannel Integration for Web / GitHub Pages Browser Mode
+    const displayChannel = new BroadcastChannel('zisus_bible_channel');
+
+    displayChannel.onmessage = (event) => {
+      const data = event.data;
+
+      if (data.type === 'SHOW_VERSE') {
+        document.getElementById('live-ref').innerText = data.reference;
+        document.getElementById('live-text').innerText = data.text;
+      }
+
+      if (data.type === 'UPDATE_BACKGROUND') {
+        document.body.style.backgroundImage = `url("${data.image}")`;
+      }
+
+      if (data.type === 'CLOSE_WINDOW') {
+        window.close();
+      }
+    };
   </script>
 </body>
 </html>

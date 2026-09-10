@@ -7,13 +7,15 @@
     h3 { margin-top: 0; color: #aaa; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; }
     
     .search-group { display: flex; gap: 10px; margin-bottom: 10px; }
-    input[type="text"] { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #111; color: #fff; font-size: 1rem; }
+    input[type="text"], select, input[type="file"] { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #111; color: #fff; font-size: 1rem; box-sizing: border-box; width: 100%; }
     
     .btn { padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s; }
     .btn-search { background: #4285f4; color: white; }
     .btn-mic { background: #8e24aa; color: white; width: 100%; margin-top: 10px; font-size: 1.1rem; }
     .btn-mic.listening { background: #e53935; box-shadow: 0 0 18px #e53935; }
     .btn-live { background: #43a047; color: white; font-size: 1.2rem; width: 100%; border-bottom: 4px solid #2e7d32; margin-top: 10px; }
+    .btn-danger { background: #dc3545; color: white; }
+    .btn-secondary { background: #007bff; color: white; }
     
     .layout-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .btn-mode { background: #444; color: #ccc; border: 2px solid transparent; }
@@ -22,35 +24,72 @@
     .monitor-box { background: #111; padding: 15px; border-radius: 6px; font-size: 1.1rem; min-height: 50px; border-left: 4px solid #f4b400; color: #f4b400; }
     .ref-title { font-weight: bold; font-size: 1.2rem; display: block; color: #fff; margin-bottom: 5px; }
     .voice-log { color: #888; font-size: 0.85rem; margin-top: 8px; font-style: italic; }
+    .field-group { margin-bottom: 12px; }
+    label { font-weight: bold; display: block; margin-bottom: 6px; font-size: 0.9rem; color: #ccc; }
   </style>
 </head>
 <body>
 
-  <!-- 1. SCRIPTURE SEARCH & VOICE CONTROL -->
+  <!-- 1. TRANSLATION & BACKGROUND CONTROL -->
+  <div class="panel">
+    <h3>Media & Translation Settings</h3>
+    <div class="layout-row">
+      <div class="field-group">
+        <label for="translation-select">Bible Translation</label>
+        <select id="translation-select" onchange="changeTranslation(this.value)">
+          <option value="kjv" selected>KJV (King James Version)</option>
+          <option value="niv">NIV (New International Version)</option>
+          <option value="nlt">NLT (New Living Translation)</option>
+          <option value="esv">ESV (English Standard Version)</option>
+          <option value="nasb">NASB (New American Standard Bible)</option>
+          <option value="nkjv">NKJV (New King James Version)</option>
+          <option value="amp">AMP (Amplified Bible)</option>
+          <option value="msg">MSG (The Message)</option>
+          <option value="csb">CSB (Christian Standard Bible)</option>
+          <option value="nrsv">NRSV (New Revised Standard Version)</option>
+          <option value="cev">CEV (Contemporary English Version)</option>
+          <option value="gnt">GNT (Good News Translation)</option>
+          <option value="tpt">TPT (The Passion Translation)</option>
+          <option value="bsb">BSB (Berean Standard Bible)</option>
+          <option value="asv">ASV (American Standard Version)</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label for="bg-uploader">Background Image</label>
+        <input type="file" id="bg-uploader" accept="image/*" onchange="uploadBackground(event)">
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. SCRIPTURE SEARCH & VOICE CONTROL -->
   <div class="panel">
     <h3>Voice Command & Manual Search</h3>
     <div class="search-group">
-      <input type="text" id="scriptureInput" placeholder="Enter reference (e.g., John 3:16)">
+      <input type="text" id="scriptureInput" placeholder="Enter reference or topic (e.g., John 3:16 or God's love)">
       <button class="btn btn-search" onclick="searchScripture()">🔍 SEARCH</button>
     </div>
     <button id="micBtn" class="btn btn-mic" onclick="toggleVoiceEngine()">🎙️ ENABLE VOICE COMMAND ENGINE</button>
     <div id="voice-transcript-log" class="voice-log">Voice Engine: Inactive</div>
   </div>
 
-  <!-- 2. LAYOUT PROFILE PANEL -->
+  <!-- 3. LAYOUT PROFILE & WINDOW MANAGEMENT -->
   <div class="panel">
-    <h3>Display Layout Profile</h3>
-    <div class="layout-row">
+    <h3>Display Control & Layout</h3>
+    <div class="layout-row" style="margin-bottom: 10px;">
       <button id="btn-fs" class="btn btn-mode active" onclick="changeLayout('fullscreen')">🖥️ FULL SCREEN</button>
       <button id="btn-lt" class="btn btn-mode" onclick="changeLayout('lowerthird')">📛 LOWER THIRD</button>
     </div>
+    <div class="layout-row">
+      <button class="btn btn-secondary" onclick="openDisplayWindow()">🪟 OPEN DISPLAY WINDOW</button>
+      <button class="btn btn-danger" onclick="closeDisplayWindow()">❌ CLOSE DISPLAY WINDOW</button>
+    </div>
   </div>
 
-  <!-- 3. PRODUCTION PREVIEW & GO LIVE -->
+  <!-- 4. PRODUCTION PREVIEW & GO LIVE -->
   <div class="panel">
     <h3>Staged Live Preview</h3>
     <div id="preview-monitor" class="monitor-box">
-      <span class="ref-title" id="staged-ref">John 3:16</span>
+      <span class="ref-title" id="staged-ref">John 3:16 (KJV)</span>
       <span id="staged-text">For God so loved the world, that he gave his only begotten Son...</span>
     </div>
     <button class="btn btn-live" onclick="triggerGoLive()">🚀 GO LIVE TO PROJECTOR</button>
@@ -61,8 +100,27 @@
     const fs = require('fs');
     const path = require('path');
 
+    // Cross-window channel for browser/GitHub Pages preview compatibility
+    const displayChannel = new BroadcastChannel('zisus_bible_channel');
+
     let bibleDatabase = {};
-    let stagedData = { ref: "John 3:16", text: "For God so loved the world..." };
+    let activeTranslation = 'kjv';
+    let displayWindowRef = null;
+    let stagedData = { ref: "John 3:16 (KJV)", text: "For God so loved the world, that he gave his only begotten Son..." };
+
+    // Topic / Keyword Fallback Dictionary for non-reference topic searches
+    const topicKeywords = [
+      {
+        keywords: ["love", "world", "son", "god's love", "salvation", "everlasting"],
+        ref: "John 3:16",
+        text: "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life."
+      },
+      {
+        keywords: ["shepherd", "lack", "want", "provision", "green pastures"],
+        ref: "Psalms 23:1",
+        text: "The LORD is my shepherd; I shall not want."
+      }
+    ];
 
     // Load Local Scripture Database
     try {
@@ -79,12 +137,79 @@
       'one': 1, 'two': 2, 'to': 2, 'too': 2, 'three': 3, 'four': 4, 'for': 4,
       'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
       'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
-      'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
+      'sixteen': 16, 'seventeen': 18, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
       'thirty': 30, 'forty': 40, 'fifty': 50, 'first': 1, 'second': 2, 'third': 3
     };
 
     function textToNumbers(phrase) {
       return phrase.toLowerCase().split(' ').map(w => wordToNumberMap[w] || w).join(' ');
+    }
+
+    // Translation Selector
+    function changeTranslation(val) {
+      activeTranslation = val;
+      stagedData.ref = stagedData.ref.replace(/\s*\([A-Z]+\)$/i, '') + ` (${activeTranslation.toUpperCase()})`;
+      document.getElementById('staged-ref').innerText = stagedData.ref;
+    }
+
+    // Image Upload Handling
+    function uploadBackground(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          const imageDataUrl = event.target.result;
+          displayChannel.postMessage({ type: 'UPDATE_BACKGROUND', image: imageDataUrl });
+          if (ipcRenderer) {
+            ipcRenderer.send('update-background-image', imageDataUrl);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    // Display Window Management Controls
+    function openDisplayWindow() {
+      displayWindowRef = window.open('display.html', 'ZisusDisplay', 'width=1024,height=768');
+      if (ipcRenderer) {
+        ipcRenderer.send('open-display-window');
+      }
+    }
+
+    function closeDisplayWindow() {
+      displayChannel.postMessage({ type: 'CLOSE_WINDOW' });
+      if (displayWindowRef && !displayWindowRef.closed) {
+        displayWindowRef.close();
+      }
+      if (ipcRenderer) {
+        ipcRenderer.send('close-display-window');
+      }
+    }
+
+    // Topic Search Engine
+    function fetchTopic(phrase) {
+      const cleanPhrase = phrase.toLowerCase();
+      let bestMatch = null;
+      let highestScore = 0;
+
+      topicKeywords.forEach(item => {
+        let score = 0;
+        item.keywords.forEach(kw => {
+          if (cleanPhrase.includes(kw)) score += 3;
+        });
+        if (score > highestScore) {
+          highestScore = score;
+          bestMatch = item;
+        }
+      });
+
+      if (bestMatch && highestScore > 0) {
+        return {
+          ref: `${bestMatch.ref} (${activeTranslation.toUpperCase()})`,
+          text: bestMatch.text
+        };
+      }
+      return null;
     }
 
     // Verse Lookup Function
@@ -95,7 +220,7 @@
       query = query.replace(/chapter/gi, '').replace(/verse/gi, ':').replace(/\s+/g, ' ');
 
       const match = query.match(/([1-3]?\s?[A-Za-z]+)\s+(\d+)\s*[:\s]\s*(\d+)/i);
-      if (!match) return null;
+      if (!match) return fetchTopic(rawQuery);
 
       const book = match[1].trim();
       const chapter = match[2];
@@ -104,11 +229,11 @@
       const bookKey = Object.keys(bibleDatabase).find(b => b.toLowerCase() === book.toLowerCase());
       if (bookKey && bibleDatabase[bookKey][chapter] && bibleDatabase[bookKey][chapter][verse]) {
         return {
-          ref: `${bookKey} ${chapter}:${verse}`,
+          ref: `${bookKey} ${chapter}:${verse} (${activeTranslation.toUpperCase()})`,
           text: bibleDatabase[bookKey][chapter][verse]
         };
       }
-      return null;
+      return fetchTopic(rawQuery);
     }
 
     function searchScripture() {
@@ -120,18 +245,27 @@
         document.getElementById('staged-ref').innerText = result.ref;
         document.getElementById('staged-text').innerText = result.text;
       } else {
-        alert("Scripture reference not found. Please try again.");
+        alert("Scripture reference or topic not found. Please try again.");
       }
     }
 
     function triggerGoLive() {
-      ipcRenderer.send('update-live-feed', stagedData);
+      displayChannel.postMessage({
+        type: 'SHOW_VERSE',
+        reference: stagedData.ref,
+        text: stagedData.text
+      });
+      if (ipcRenderer) {
+        ipcRenderer.send('update-live-feed', stagedData);
+      }
     }
 
     function changeLayout(mode) {
       document.getElementById('btn-fs').classList.toggle('active', mode === 'fullscreen');
       document.getElementById('btn-lt').classList.toggle('active', mode === 'lowerthird');
-      ipcRenderer.send('update-layout-mode', mode);
+      if (ipcRenderer) {
+        ipcRenderer.send('update-layout-mode', mode);
+      }
     }
 
     // --- VOICE RECOGNITION & AUTOMATION ENGINE ---
@@ -163,7 +297,7 @@
                                   transcript.includes("go live") || 
                                   transcript.includes("project");
 
-        // Search for scripture in transcript
+        // Search for scripture or topic in transcript
         const verseMatch = fetchVerse(transcript);
 
         if (verseMatch) {

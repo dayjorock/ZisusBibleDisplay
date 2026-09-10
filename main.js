@@ -26,11 +26,26 @@ function launchSoftwareStudio() {
   controllerWindow.loadFile(path.join(__dirname, 'index.html'));
 
   // 2. Projector Display Window
+  createDisplayWindow(projectorDisplay);
+
+  controllerWindow.on('closed', () => { if (process.platform !== 'darwin') app.quit(); });
+}
+
+function createDisplayWindow(targetDisplay) {
+  if (displayWindow && !displayWindow.isDestroyed()) {
+    displayWindow.focus();
+    return;
+  }
+
+  const displays = screen.getAllDisplays();
+  const mainDisplay = screen.getPrimaryDisplay();
+  const projector = targetDisplay || displays.find(d => d.bounds.x !== 0 || d.bounds.y !== 0) || mainDisplay;
+
   displayWindow = new BrowserWindow({
-    x: projectorDisplay.bounds.x,
-    y: projectorDisplay.bounds.y,
-    width: projectorDisplay.bounds.width,
-    height: projectorDisplay.bounds.height,
+    x: projector.bounds.x,
+    y: projector.bounds.y,
+    width: projector.bounds.width,
+    height: projector.bounds.height,
     fullscreen: true,
     frame: false,
     alwaysOnTop: false,
@@ -44,7 +59,6 @@ function launchSoftwareStudio() {
 
   displayWindow.loadFile(path.join(__dirname, 'display.html'));
 
-  controllerWindow.on('closed', () => { if (process.platform !== 'darwin') app.quit(); });
   displayWindow.on('closed', () => { displayWindow = null; });
 }
 
@@ -53,14 +67,32 @@ app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 
 // Local IPC Bridge (Controller <-> Display sync)
 ipcMain.on('update-live-feed', (event, data) => {
-  if (displayWindow) {
+  if (displayWindow && !displayWindow.isDestroyed()) {
     displayWindow.webContents.send('render-live-feed', data);
   }
 });
 
 ipcMain.on('update-layout-mode', (event, mode) => {
-  if (displayWindow) {
+  if (displayWindow && !displayWindow.isDestroyed()) {
     displayWindow.webContents.send('apply-layout-mode', mode);
+  }
+});
+
+// IPC Bridge for Background Picture Updating
+ipcMain.on('update-background-image', (event, imageUrl) => {
+  if (displayWindow && !displayWindow.isDestroyed()) {
+    displayWindow.webContents.send('set-background-image', imageUrl);
+  }
+});
+
+// IPC Bridge for Display Window Management
+ipcMain.on('open-display-window', () => {
+  createDisplayWindow();
+});
+
+ipcMain.on('close-display-window', () => {
+  if (displayWindow && !displayWindow.isDestroyed()) {
+    displayWindow.close();
   }
 });
 

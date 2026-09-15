@@ -96,11 +96,16 @@
   </div>
 
   <script>
-    const { ipcRenderer } = require('electron');
+    let ipcRenderer;
+    try {
+      ipcRenderer = require('electron').ipcRenderer;
+    } catch (e) {
+      console.log("Running in standard browser environment.");
+    }
+
     const fs = require('fs');
     const path = require('path');
 
-    // Cross-window channel for browser/GitHub Pages preview compatibility
     const displayChannel = new BroadcastChannel('zisus_bible_channel');
 
     let bibleDatabase = {};
@@ -108,36 +113,26 @@
     let displayWindowRef = null;
     let stagedData = { ref: "John 3:16 (KJV)", text: "For God so loved the world, that he gave his only begotten Son..." };
 
-    // Topic / Keyword Fallback Dictionary for non-reference topic searches
-    const topicKeywords = [
-      {
-        keywords: ["love", "world", "son", "god's love", "salvation", "everlasting"],
-        ref: "John 3:16",
-        text: "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life."
-      },
-      {
-        keywords: ["shepherd", "lack", "want", "provision", "green pastures"],
-        ref: "Psalms 23:1",
-        text: "The LORD is my shepherd; I shall not want."
-      }
-    ];
-
-    // Load Local Scripture Database
+    // Robust Bible JSON Loader
     try {
       const jsonPath = path.join(__dirname, 'bible-kjv.json');
       if (fs.existsSync(jsonPath)) {
-        bibleDatabase = JSON.parse(fs.readFileSync(jsonPath));
+        const rawData = fs.readFileSync(jsonPath, 'utf8');
+        bibleDatabase = JSON.parse(rawData);
+        console.log("Bible database loaded successfully.");
+      } else {
+        console.error("bible-kjv.json not found in root path:", jsonPath);
       }
     } catch (err) {
-      console.error("Bible database error:", err);
+      console.error("Bible database load error:", err);
     }
 
-    // Numbers Dictionary for Voice Parsing
+    // Number conversion map for voice input parsing
     const wordToNumberMap = {
       'one': 1, 'two': 2, 'to': 2, 'too': 2, 'three': 3, 'four': 4, 'for': 4,
       'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
       'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
-      'sixteen': 16, 'seventeen': 18, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
+      'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
       'thirty': 30, 'forty': 40, 'fifty': 50, 'first': 1, 'second': 2, 'third': 3
     };
 
@@ -145,14 +140,68 @@
       return phrase.toLowerCase().split(' ').map(w => wordToNumberMap[w] || w).join(' ');
     }
 
-    // Translation Selector
+    // Universal Lookup Function handling nested JSON structures and variations
+    function fetchVerse(rawQuery) {
+      if (!rawQuery || typeof rawQuery !== 'string') return null;
+
+      let query = textToNumbers(rawQuery.trim());
+      query = query.replace(/chapter/gi, '').replace(/verse/gi, ':').replace(/\s+/g, ' ');
+
+      // Regex matching formats: "John 3 16", "John 3:16", "1 John 3:16"
+      const match = query.match(/([1-3]?\s?[A-Za-z]+)\s+(\d+)\s*[:\s]\s*(\d+)/i);
+      if (!match) return null;
+
+      const inputBook = match[1].trim().toLowerCase();
+      const chapter = match[2];
+      const verse = match[3];
+
+      // Fuzzy lookup for Book keys
+      const keys = Object.keys(bibleDatabase);
+      const bookKey = keys.find(k => k.toLowerCase() === inputBook || k.toLowerCase().replace(/\s+/g, '') === inputBook.replace(/\s+/g, ''));
+
+      if (!bookKey) return null;
+
+      const bookData = bibleDatabase[bookKey];
+
+      // Handling Nested JSON: {"John": {"3": {"16": "Text"}}}
+      if (bookData[chapter] && bookData[chapter][verse]) {
+        return {
+          ref: `${bookKey} ${chapter}:${verse} (${activeTranslation.toUpperCase()})`,
+          text: bookData[chapter][verse]
+        };
+      }
+
+      // Handling Flat JSON: {"John 3:16": "Text"}
+      const flatKey = `${bookKey} ${chapter}:${verse}`;
+      if (bibleDatabase[flatKey]) {
+        return {
+          ref: `${flatKey} (${activeTranslation.toUpperCase()})`,
+          text: bibleDatabase[flatKey]
+        };
+      }
+
+      return null;
+    }
+
+    function searchScripture() {
+      const query = document.getElementById('scriptureInput').value;
+      const result = fetchVerse(query);
+      
+      if (result) {
+        stagedData = result;
+        document.getElementById('staged-ref').innerText = result.ref;
+        document.getElementById('staged-text').innerText = result.text;
+      } else {
+        alert("Scripture reference not found in bible-kjv.json. Example format: John 3:16");
+      }
+    }
+
     function changeTranslation(val) {
       activeTranslation = val;
       stagedData.ref = stagedData.ref.replace(/\s*\([A-Z]+\)$/i, '') + ` (${activeTranslation.toUpperCase()})`;
       document.getElementById('staged-ref').innerText = stagedData.ref;
     }
 
-    // Image Upload Handling
     function uploadBackground(e) {
       const file = e.target.files[0];
       if (file) {
@@ -168,7 +217,6 @@
       }
     }
 
-    // Display Window Management Controls
     function openDisplayWindow() {
       displayWindowRef = window.open('display.html', 'ZisusDisplay', 'width=1024,height=768');
       if (ipcRenderer) {
@@ -183,69 +231,6 @@
       }
       if (ipcRenderer) {
         ipcRenderer.send('close-display-window');
-      }
-    }
-
-    // Topic Search Engine
-    function fetchTopic(phrase) {
-      const cleanPhrase = phrase.toLowerCase();
-      let bestMatch = null;
-      let highestScore = 0;
-
-      topicKeywords.forEach(item => {
-        let score = 0;
-        item.keywords.forEach(kw => {
-          if (cleanPhrase.includes(kw)) score += 3;
-        });
-        if (score > highestScore) {
-          highestScore = score;
-          bestMatch = item;
-        }
-      });
-
-      if (bestMatch && highestScore > 0) {
-        return {
-          ref: `${bestMatch.ref} (${activeTranslation.toUpperCase()})`,
-          text: bestMatch.text
-        };
-      }
-      return null;
-    }
-
-    // Verse Lookup Function
-    function fetchVerse(rawQuery) {
-      let query = textToNumbers(rawQuery);
-
-      // Clean common speech artifacts (e.g. "chapter 3 verse 16" -> "3:16")
-      query = query.replace(/chapter/gi, '').replace(/verse/gi, ':').replace(/\s+/g, ' ');
-
-      const match = query.match(/([1-3]?\s?[A-Za-z]+)\s+(\d+)\s*[:\s]\s*(\d+)/i);
-      if (!match) return fetchTopic(rawQuery);
-
-      const book = match[1].trim();
-      const chapter = match[2];
-      const verse = match[3];
-
-      const bookKey = Object.keys(bibleDatabase).find(b => b.toLowerCase() === book.toLowerCase());
-      if (bookKey && bibleDatabase[bookKey][chapter] && bibleDatabase[bookKey][chapter][verse]) {
-        return {
-          ref: `${bookKey} ${chapter}:${verse} (${activeTranslation.toUpperCase()})`,
-          text: bibleDatabase[bookKey][chapter][verse]
-        };
-      }
-      return fetchTopic(rawQuery);
-    }
-
-    function searchScripture() {
-      const query = document.getElementById('scriptureInput').value;
-      const result = fetchVerse(query);
-      
-      if (result) {
-        stagedData = result;
-        document.getElementById('staged-ref').innerText = result.ref;
-        document.getElementById('staged-text').innerText = result.text;
-      } else {
-        alert("Scripture reference or topic not found. Please try again.");
       }
     }
 
@@ -268,7 +253,7 @@
       }
     }
 
-    // --- VOICE RECOGNITION & AUTOMATION ENGINE ---
+    // --- VOICE ENGINE CONFIGURATION ---
     let recognition;
     let isListening = false;
 
@@ -277,6 +262,7 @@
       recognition = new SpeechClass();
       recognition.continuous = true;
       recognition.interimResults = false;
+      recognition.lang = 'en-US';
 
       recognition.onstart = () => {
         isListening = true;
@@ -291,13 +277,11 @@
         document.getElementById('voice-transcript-log').innerText = `Heard: "${transcript}"`;
         document.getElementById('scriptureInput').value = transcript;
 
-        // Check for Trigger Words
         const shouldAutoDisplay = transcript.includes("display") || 
                                   transcript.includes("show") || 
                                   transcript.includes("go live") || 
                                   transcript.includes("project");
 
-        // Search for scripture or topic in transcript
         const verseMatch = fetchVerse(transcript);
 
         if (verseMatch) {
@@ -305,15 +289,18 @@
           document.getElementById('staged-ref').innerText = verseMatch.ref;
           document.getElementById('staged-text').innerText = verseMatch.text;
 
-          // AUTO-GO LIVE TRIGGER: If a command word was spoken, project immediately!
           if (shouldAutoDisplay) {
             triggerGoLive();
           }
         }
       };
 
+      recognition.onerror = (event) => {
+        console.error("Speech Recognition Error:", event.error);
+        document.getElementById('voice-transcript-log').innerText = `Voice Error: ${event.error}`;
+      };
+
       recognition.onend = () => {
-        // Auto-restart engine so it stays active continuously during service
         if (isListening) {
           try { recognition.start(); } catch(e) {}
         } else {
@@ -323,10 +310,12 @@
           document.getElementById('voice-transcript-log').innerText = "Status: Voice Engine Paused";
         }
       };
+    } else {
+      document.getElementById('voice-transcript-log').innerText = "Voice engine not supported on this browser context.";
     }
 
     function toggleVoiceEngine() {
-      if (!recognition) return alert("Speech recognition is not supported on this device.");
+      if (!recognition) return alert("Speech recognition engine is not available.");
       
       if (isListening) {
         isListening = false;

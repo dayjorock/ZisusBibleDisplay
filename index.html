@@ -113,20 +113,35 @@
     let displayWindowRef = null;
     let stagedData = { ref: "John 3:16 (KJV)", text: "For God so loved the world, that he gave his only begotten Son..." };
 
-    // Robust Bible JSON Loader
+   // Load Bible data over HTTPS or local fallback
+async function loadBibleDatabase() {
+  const remoteUrl = 'https://raw.githubusercontent.com/dayjorock/ZisusBibleDisplay/main/bible-kjv.json';
+
+  try {
+    const response = await fetch(remoteUrl);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    
+    bibleDatabase = await response.json();
+    console.log(`Loaded ${bibleDatabase.length} verses from GitHub.`);
+  } catch (onlineError) {
+    console.warn("Could not fetch remote JSON, attempting local load...", onlineError);
+    
+    // Offline / Local File Fallback
     try {
       const jsonPath = path.join(__dirname, 'bible-kjv.json');
       if (fs.existsSync(jsonPath)) {
         const rawData = fs.readFileSync(jsonPath, 'utf8');
         bibleDatabase = JSON.parse(rawData);
-        console.log("Bible database loaded successfully.");
-      } else {
-        console.error("bible-kjv.json not found in root path:", jsonPath);
+        console.log(`Loaded ${bibleDatabase.length} verses from local disk.`);
       }
-    } catch (err) {
-      console.error("Bible database load error:", err);
+    } catch (localError) {
+      console.error("Failed to load local Bible JSON file:", localError);
     }
+  }
+}
 
+// Call on startup
+loadBibleDatabase();
     // Number conversion map for voice input parsing
     const wordToNumberMap = {
       'one': 1, 'two': 2, 'to': 2, 'too': 2, 'three': 3, 'four': 4, 'for': 4,

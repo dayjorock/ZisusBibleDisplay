@@ -1,5 +1,6 @@
 const { app, BrowserWindow, screen, ipcMain, systemPreferences } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 let controllerWindow;
 let displayWindow;
@@ -23,21 +24,23 @@ function launchSoftwareStudio() {
     }
   });
 
+  // Auto-approve media/microphone permissions
+  controllerWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media') {
+      return callback(true);
+    }
+    callback(false);
+  });
+
   controllerWindow.loadFile(path.join(__dirname, 'index.html'));
 
   // 2. Projector Display Window
   createDisplayWindow(projectorDisplay);
 
-  controllerWindow.on('closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  controllerWindow.on('closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
 }
-
-// Add inside main.js inside launchSoftwareStudio()
-controllerWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-  if (permission === 'media') {
-    return callback(true); // Auto-approve microphone requests
-  }
-  callback(false);
-});
 
 function createDisplayWindow(targetDisplay) {
   if (displayWindow && !displayWindow.isDestroyed()) {
@@ -70,8 +73,20 @@ function createDisplayWindow(targetDisplay) {
   displayWindow.on('closed', () => { displayWindow = null; });
 }
 
-// System Hardware Permission Overrides
+// Hardware & Permission Overrides
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+
+// IPC Bridge for Loading Bible JSON
+ipcMain.handle('get-bible-data', async () => {
+  try {
+    const jsonPath = path.join(__dirname, 'bible-kjv_2.json');
+    const rawData = fs.readFileSync(jsonPath, 'utf8');
+    return JSON.parse(rawData);
+  } catch (error) {
+    console.error("Error reading bible-kjv_2.json:", error);
+    return [];
+  }
+});
 
 // Local IPC Bridge (Controller <-> Display sync)
 ipcMain.on('update-live-feed', (event, data) => {
